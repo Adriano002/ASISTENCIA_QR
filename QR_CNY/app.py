@@ -520,84 +520,120 @@ class QRVideoTransformer:
 # FUNCIÓN PARA CÁMARA (VERSIÓN CELULAR - LA QUE FUNCIONA)
 # ============================================================
 
+# ============================================================
+# FUNCIÓN PARA CÁMARA CON BOTÓN DE CAMBIO MANUAL
+# ============================================================
+
 def mostrar_camara_vivo():
-    """Versión que funciona en celular - usa st.camera_input"""
+    """Cámara con botón manual para cambiar entre frontal/trasera"""
     
     st.subheader("📷 Escanear QR")
-    st.caption("📱 En celular: toca el ícono 🔄 para cambiar a cámara trasera")
     
-    # Estado
-    if 'dni_qr_vivo' not in st.session_state:
-        st.session_state.dni_qr_vivo = None
+    # Estado para la cámara
+    if 'camara_trasera' not in st.session_state:
+        st.session_state.camara_trasera = True
     
-    # Instrucciones claras
-    st.info("""
-    📸 **Cómo usar:**
-    1. Toca el botón **"Tomar foto"**
-    2. Busca el ícono **🔄** en la pantalla de la cámara
-    3. Toca el ícono para cambiar a la **cámara trasera**
-    4. Toma la foto del QR
-    """)
+    if 'dni_qr_foto' not in st.session_state:
+        st.session_state.dni_qr_foto = None
     
-    # Cámara
-    imagen = st.camera_input("📸 Tomar foto del QR", key="camara_celular")
+    # BOTÓN PARA CAMBIAR DE CÁMARA
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if st.session_state.camara_trasera:
+            st.info("📷 Usando cámara TRASERA (atrás)")
+        else:
+            st.info("🤳 Usando cámara FRONTAL (selfie)")
+    
+    with col2:
+        if st.button("🔄 Cambiar cámara", use_container_width=True):
+            st.session_state.camara_trasera = not st.session_state.camara_trasera
+            st.rerun()
+    
+    st.caption("💡 Si la cámara no cambia, toca el botón de nuevo")
+    
+    # Determinar facingMode
+    if st.session_state.camara_trasera:
+        facing_mode = "environment"  # Trasera
+    else:
+        facing_mode = "user"  # Frontal
+    
+    # Intentar abrir la cámara con el facingMode seleccionado
+    try:
+        imagen = st.camera_input(
+            "📸 Tomar foto del QR",
+            key="camara_qr",
+            disabled=False
+        )
+    except Exception as e:
+        st.error(f"Error al abrir la cámara: {e}")
+        imagen = None
     
     if imagen is not None:
         st.image(imagen, width=200)
         st.caption("✅ Imagen capturada")
         
         if st.button("🔍 Procesar QR", use_container_width=True, type="primary"):
-            with st.spinner("Procesando..."):
+            with st.spinner("🔍 Procesando..."):
                 dni, error = procesar_qr(imagen.getvalue())
             
             if error:
                 st.warning(f"⚠️ {error}")
             elif dni:
-                st.session_state.dni_qr_vivo = dni
+                st.session_state.dni_qr_foto = dni
+                st.success(f"✅ QR detectado: {dni}")
                 st.rerun()
+            else:
+                st.error("❌ No se detectó QR")
     
     # Mostrar QR detectado
-    if st.session_state.dni_qr_vivo:
-        dni = st.session_state.dni_qr_vivo
-        st.success(f"✅ QR detectado: {dni}")
+    if st.session_state.dni_qr_foto:
+        dni = st.session_state.dni_qr_foto
         
         alumno = get_alumno(dni)
         if alumno:
+            st.success(f"✅ QR detectado: {dni}")
             st.info(f"👤 {alumno[2]}, {alumno[1]} - {alumno[3]}")
+            
+            st.markdown("---")
+            st.subheader("📝 Registrar Asistencia")
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("✅ Puntual", key="cel_puntual", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Puntual", "qr_cel")
+                if st.button("✅ Puntual", key="cam_puntual", use_container_width=True):
+                    ok, msg = registrar_asistencia(dni, "Puntual", "qr_cam")
                     if ok:
-                        audit(st.session_state.user, f"QR Cel {dni}")
+                        audit(st.session_state.user, f"QR Cam {dni}")
                         st.success(f"✔ {msg}")
-                        st.session_state.dni_qr_vivo = None
+                        st.balloons()
+                        st.session_state.dni_qr_foto = None
                         st.rerun()
                     else:
                         st.warning(f"⚠️ {msg}")
             with col2:
-                if st.button("🟡 Tardanza", key="cel_tardanza", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Tardanza", "qr_cel")
+                if st.button("🟡 Tardanza", key="cam_tardanza", use_container_width=True):
+                    ok, msg = registrar_asistencia(dni, "Tardanza", "qr_cam")
                     if ok:
-                        audit(st.session_state.user, f"QR Cel Tardanza {dni}")
+                        audit(st.session_state.user, f"QR Cam Tardanza {dni}")
                         st.warning(f"⚠️ {msg}")
-                        st.session_state.dni_qr_vivo = None
+                        st.session_state.dni_qr_foto = None
                         st.rerun()
                     else:
                         st.warning(f"⚠️ {msg}")
             with col3:
-                if st.button("🔴 Falta", key="cel_falta", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Falta", "qr_cel")
+                if st.button("🔴 Falta", key="cam_falta", use_container_width=True):
+                    ok, msg = registrar_asistencia(dni, "Falta", "qr_cam")
                     if ok:
-                        audit(st.session_state.user, f"QR Cel Falta {dni}")
+                        audit(st.session_state.user, f"QR Cam Falta {dni}")
                         st.error(f"❌ {msg}")
-                        st.session_state.dni_qr_vivo = None
+                        st.session_state.dni_qr_foto = None
                         st.rerun()
                     else:
                         st.warning(f"⚠️ {msg}")
         else:
             st.error(f"❌ DNI {dni} no encontrado")
+            if st.button("Limpiar", use_container_width=True):
+                st.session_state.dni_qr_foto = None
+                st.rerun()
 
 # ============================================================
 # 6. SESIÓN
