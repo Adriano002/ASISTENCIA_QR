@@ -514,91 +514,81 @@ class QRVideoTransformer:
 # FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (SIN OverconstrainedError)
 # ============================================================
 
+# ============================================================
+# FUNCIÓN PARA CÁMARA (VERSIÓN CELULAR - LA QUE FUNCIONA)
+# ============================================================
+
 def mostrar_camara_vivo():
-    """Muestra la cámara en vivo con detección de QR"""
+    """Versión que funciona en celular - usa st.camera_input"""
     
-    st.subheader("📷 Cámara en Vivo")
-    st.caption("Apunta la cámara al QR. Se detectará automáticamente")
+    st.subheader("📷 Escanear QR")
+    st.caption("📱 En celular: toca el ícono 🔄 para cambiar a cámara trasera")
     
-    # Estado para el QR detectado
+    # Estado
     if 'dni_qr_vivo' not in st.session_state:
         st.session_state.dni_qr_vivo = None
     
-    # Opción para elegir cámara
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        if st.button("🔄 Cambiar cámara", use_container_width=True):
-            if 'camara_trasera' not in st.session_state:
-                st.session_state.camara_trasera = True
-            st.session_state.camara_trasera = not st.session_state.camara_trasera
-            st.rerun()
+    # Instrucciones claras
+    st.info("""
+    📸 **Cómo usar:**
+    1. Toca el botón **"Tomar foto"**
+    2. Busca el ícono **🔄** en la pantalla de la cámara
+    3. Toca el ícono para cambiar a la **cámara trasera**
+    4. Toma la foto del QR
+    """)
     
-    # Determinar facingMode (sin exact para evitar error)
-    if 'camara_trasera' not in st.session_state:
-        st.session_state.camara_trasera = True
+    # Cámara
+    imagen = st.camera_input("📸 Tomar foto del QR", key="camara_celular")
     
-    if st.session_state.camara_trasera:
-        facing_mode = "environment"
-        st.info("📷 Usando cámara TRASERA")
-    else:
-        facing_mode = "user"
-        st.info("🤳 Usando cámara FRONTAL")
+    if imagen is not None:
+        st.image(imagen, width=200)
+        st.caption("✅ Imagen capturada")
+        
+        if st.button("🔍 Procesar QR", use_container_width=True, type="primary"):
+            with st.spinner("Procesando..."):
+                dni, error = procesar_qr(imagen.getvalue())
+            
+            if error:
+                st.warning(f"⚠️ {error}")
+            elif dni:
+                st.session_state.dni_qr_vivo = dni
+                st.rerun()
     
-    # Iniciar stream - SIN exact para evitar OverconstrainedError
-    webrtc_streamer(
-        key="qr-scanner-vivo",
-        video_transformer_factory=QRVideoTransformer,
-        media_stream_constraints={
-            "video": {
-                "facingMode": facing_mode,  # ✅ SIN exact
-                "width": {"ideal": 640},
-                "height": {"ideal": 480},
-            },
-            "audio": False,
-        },
-        async_processing=True,
-    )
-    
-    # Mostrar el QR detectado si existe
+    # Mostrar QR detectado
     if st.session_state.dni_qr_vivo:
         dni = st.session_state.dni_qr_vivo
-        
         st.success(f"✅ QR detectado: {dni}")
         
         alumno = get_alumno(dni)
         if alumno:
-            st.info(f"👤 {alumno[2]}, {alumno[1]} - {alumno[3]} (Turno: {alumno[4]})")
-            
-            st.markdown("---")
-            st.subheader("📝 Registrar Asistencia")
+            st.info(f"👤 {alumno[2]}, {alumno[1]} - {alumno[3]}")
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("✅ Puntual", key="vivo_puntual", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Puntual", "qr_vivo")
+                if st.button("✅ Puntual", key="cel_puntual", use_container_width=True):
+                    ok, msg = registrar_asistencia(dni, "Puntual", "qr_cel")
                     if ok:
-                        audit(st.session_state.user, f"QR Vivo {dni}")
+                        audit(st.session_state.user, f"QR Cel {dni}")
                         st.success(f"✔ {msg}")
-                        st.balloons()
                         st.session_state.dni_qr_vivo = None
                         st.rerun()
                     else:
                         st.warning(f"⚠️ {msg}")
             with col2:
-                if st.button("🟡 Tardanza", key="vivo_tardanza", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Tardanza", "qr_vivo")
+                if st.button("🟡 Tardanza", key="cel_tardanza", use_container_width=True):
+                    ok, msg = registrar_asistencia(dni, "Tardanza", "qr_cel")
                     if ok:
-                        audit(st.session_state.user, f"QR Vivo Tardanza {dni}")
+                        audit(st.session_state.user, f"QR Cel Tardanza {dni}")
                         st.warning(f"⚠️ {msg}")
                         st.session_state.dni_qr_vivo = None
                         st.rerun()
                     else:
                         st.warning(f"⚠️ {msg}")
             with col3:
-                if st.button("🔴 Falta", key="vivo_falta", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Falta", "qr_vivo")
+                if st.button("🔴 Falta", key="cel_falta", use_container_width=True):
+                    ok, msg = registrar_asistencia(dni, "Falta", "qr_cel")
                     if ok:
-                        audit(st.session_state.user, f"QR Vivo Falta {dni}")
+                        audit(st.session_state.user, f"QR Cel Falta {dni}")
                         st.error(f"❌ {msg}")
                         st.session_state.dni_qr_vivo = None
                         st.rerun()
@@ -606,14 +596,6 @@ def mostrar_camara_vivo():
                         st.warning(f"⚠️ {msg}")
         else:
             st.error(f"❌ DNI {dni} no encontrado")
-            if st.button("Limpiar", use_container_width=True):
-                st.session_state.dni_qr_vivo = None
-                st.rerun()
-    
-    # Botón para reiniciar
-    if st.button("🔄 Reiniciar detección", use_container_width=True):
-        st.session_state.dni_qr_vivo = None
-        st.rerun()
 
 # ============================================================
 # 6. SESIÓN
