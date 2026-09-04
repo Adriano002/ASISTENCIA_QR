@@ -79,7 +79,6 @@ def migrar_base_datos():
 
 # ============================================================
 # 2. INICIALIZACIÓN DE BASE DE DATOS
-# ============================================================
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
@@ -503,29 +502,37 @@ class QRVideoTransformer:
 # FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (CORREGIDA)
 # ============================================================
 
+# ============================================================
+# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (CON CÁMARA TRASERA)
+# ============================================================
+
 def mostrar_camara_vivo():
-    """Muestra la cámara en vivo con detección de QR"""
+    """Muestra la cámara en vivo con detección de QR - Cámara trasera"""
     
     st.subheader("📷 Cámara en Vivo")
-    st.caption("Apunta la cámara al QR. Se detectará automáticamente")
-    st.info("💡 En celular: usa la cámara trasera y acerca el QR")
+    st.caption("Apunta la cámara trasera al QR. Se detectará automáticamente")
+    st.info("💡 En celular: usa la cámara trasera (la de atrás)")
     
     # Estado para el QR detectado
     if 'dni_qr_vivo' not in st.session_state:
         st.session_state.dni_qr_vivo = None
     
-    # Iniciar stream
+    # Iniciar stream con cámara trasera
     webrtc_streamer(
         key="qr-scanner-vivo",
         video_transformer_factory=QRVideoTransformer,
         media_stream_constraints={
-            "video": True,
+            "video": {
+                "facingMode": "environment",  # 🔴 CÁMARA TRASERA
+                "width": {"ideal": 640},
+                "height": {"ideal": 480},
+            },
             "audio": False,
         },
         async_processing=True,
     )
     
-    # Mostrar el QR detectado si existe (LEER DESDE SESSION_STATE)
+    # Mostrar el QR detectado si existe
     if st.session_state.dni_qr_vivo:
         dni = st.session_state.dni_qr_vivo
         
