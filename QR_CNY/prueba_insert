@@ -1,0 +1,30 @@
+# migrar_columnas.py
+import sqlite3
+
+DB_PATH = "asistencia_enterprise.db"
+
+def migrar():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Agregar columna turno
+    try:
+        cursor.execute("ALTER TABLE alumnos ADD COLUMN turno TEXT DEFAULT 'Mañana'")
+        print("✅ Columna 'turno' agregada")
+    except Exception as e:
+        print(f"ℹ️ turno: {e}")
+    
+    # Agregar columna fecha_registro
+    try:
+        cursor.execute("ALTER TABLE alumnos ADD COLUMN fecha_registro TEXT DEFAULT CURRENT_DATE")
+        print("✅ Columna 'fecha_registro' agregada")
+    except Exception as e:
+        print(f"ℹ️ fecha_registro: {e}")
+    
+    conn.commit()
+    conn.close()
+    
+    print("\n✅ Migración completada")
+
+if __name__ == "__main__":
+    migrar()

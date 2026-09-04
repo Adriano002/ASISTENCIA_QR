@@ -1,0 +1,52 @@
+# restaurar_y_migrar.py
+import shutil
+import os
+import sqlite3
+
+DB_PATH = "asistencia_enterprise.db"
+BACKUP_DIR = "backups"
+
+def restaurar_y_migrar():
+    # 1. Buscar el backup más reciente
+    if not os.path.exists(BACKUP_DIR):
+        print("❌ No hay carpeta backups")
+        return
+    
+    backups = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.db')]
+    if not backups:
+        print("❌ No hay backups")
+        return
+    
+    backups.sort(reverse=True)
+    ultimo_backup = backups[0]
+    ruta_backup = os.path.join(BACKUP_DIR, ultimo_backup)
+    
+    print(f"📁 Restaurando: {ultimo_backup}")
+    
+    # 2. Restaurar backup
+    shutil.copy2(ruta_backup, DB_PATH)
+    print("✅ Backup restaurado")
+    
+    # 3. Migrar (agregar columnas faltantes)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("PRAGMA table_info(alumnos)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    print(f"📋 Columnas actuales: {columnas}")
+    
+    if 'turno' not in columnas:
+        cursor.execute("ALTER TABLE alumnos ADD COLUMN turno TEXT DEFAULT 'Mañana'")
+        print("✅ turno agregada")
+    
+    if 'fecha_registro' not in columnas:
+        cursor.execute("ALTER TABLE alumnos ADD COLUMN fecha_registro TEXT DEFAULT CURRENT_DATE")
+        print("✅ fecha_registro agregada")
+    
+    conn.commit()
+    conn.close()
+    
+    print("✅ Migración completada")
+
+if __name__ == "__main__":
+    restaurar_y_migrar()

@@ -1,0 +1,162 @@
+import sqlite3
+import os
+
+DB_PATH = "asistencia_enterprise.db"
+
+def migrar_todo():
+    """Migra la base de datos agregando TODAS las columnas faltantes"""
+    
+    # Verificar si la base de datos existe
+    if not os.path.exists(DB_PATH):
+        print(f"❌ Base de datos '{DB_PATH}' no encontrada")
+        print("   Ejecuta primero la app para crear la base de datos")
+        return
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    print("=" * 60)
+    print("🚀 INICIANDO MIGRACIÓN COMPLETA")
+    print("=" * 60)
+    
+    # --- 1. TABLA: usuarios ---
+    print("\n📋 Verificando tabla 'usuarios'...")
+    cursor.execute("PRAGMA table_info(usuarios)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    print(f"   Columnas actuales: {columnas}")
+    
+    # Agregar turno_asignado
+    if 'turno_asignado' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN turno_asignado TEXT DEFAULT 'Mañana'")
+            print("   ✅ Columna 'turno_asignado' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'turno_asignado' ya existe")
+    
+    # --- 2. TABLA: alumnos ---
+    print("\n📋 Verificando tabla 'alumnos'...")
+    cursor.execute("PRAGMA table_info(alumnos)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    print(f"   Columnas actuales: {columnas}")
+    
+    # Agregar turno
+    if 'turno' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE alumnos ADD COLUMN turno TEXT DEFAULT 'Mañana'")
+            print("   ✅ Columna 'turno' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'turno' ya existe")
+    
+    # Agregar fecha_registro
+    if 'fecha_registro' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE alumnos ADD COLUMN fecha_registro TEXT DEFAULT CURRENT_DATE")
+            print("   ✅ Columna 'fecha_registro' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'fecha_registro' ya existe")
+    
+    # --- 3. TABLA: asistencias ---
+    print("\n📋 Verificando tabla 'asistencias'...")
+    cursor.execute("PRAGMA table_info(asistencias)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    print(f"   Columnas actuales: {columnas}")
+    
+    # Agregar turno
+    if 'turno' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE asistencias ADD COLUMN turno TEXT DEFAULT 'Mañana'")
+            print("   ✅ Columna 'turno' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'turno' ya existe")
+    
+    # Agregar metodo
+    if 'metodo' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE asistencias ADD COLUMN metodo TEXT DEFAULT 'manual'")
+            print("   ✅ Columna 'metodo' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'metodo' ya existe")
+    
+    # Agregar registrado_por
+    if 'registrado_por' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE asistencias ADD COLUMN registrado_por TEXT DEFAULT ''")
+            print("   ✅ Columna 'registrado_por' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'registrado_por' ya existe")
+    
+    # --- 4. TABLA: justificaciones ---
+    print("\n📋 Verificando tabla 'justificaciones'...")
+    cursor.execute("PRAGMA table_info(justificaciones)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    print(f"   Columnas actuales: {columnas}")
+    
+    # Agregar fecha_registro
+    if 'fecha_registro' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE justificaciones ADD COLUMN fecha_registro TEXT DEFAULT CURRENT_DATE")
+            print("   ✅ Columna 'fecha_registro' agregada")
+        except Exception as e:
+            print(f"   ⚠️ Error: {e}")
+    else:
+        print("   ℹ️ 'fecha_registro' ya existe")
+    
+    # --- 5. TABLA: horarios (si existe) ---
+    print("\n📋 Verificando tabla 'horarios'...")
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='horarios'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(horarios)")
+        columnas = [col[1] for col in cursor.fetchall()]
+        print(f"   Columnas actuales: {columnas}")
+    else:
+        print("   ℹ️ Tabla 'horarios' no existe (no es necesaria)")
+    
+    # --- 6. TABLA: historial_asistencias (si existe) ---
+    print("\n📋 Verificando tabla 'historial_asistencias'...")
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='historial_asistencias'")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(historial_asistencias)")
+        columnas = [col[1] for col in cursor.fetchall()]
+        print(f"   Columnas actuales: {columnas}")
+    else:
+        print("   ℹ️ Tabla 'historial_asistencias' no existe (no es necesaria)")
+    
+    # --- COMMIT ---
+    conn.commit()
+    
+    # --- RESUMEN FINAL ---
+    print("\n" + "=" * 60)
+    print("📋 ESTRUCTURA FINAL DE LAS TABLAS:")
+    print("=" * 60)
+    
+    # Mostrar estructura final de cada tabla
+    tablas = ['usuarios', 'alumnos', 'asistencias', 'justificaciones']
+    for tabla in tablas:
+        cursor.execute(f"PRAGMA table_info({tabla})")
+        columnas = [col[1] for col in cursor.fetchall()]
+        print(f"\n📌 {tabla}:")
+        for col in columnas:
+            print(f"   - {col}")
+    
+    conn.close()
+    
+    print("\n" + "=" * 60)
+    print("✅ MIGRACIÓN COMPLETADA EXITOSAMENTE")
+    print("=" * 60)
+    print("\n💡 Ahora puedes ejecutar tu aplicación normalmente:")
+    print("   streamlit run app.py")
+
+if __name__ == "__main__":
+    migrar_todo()
