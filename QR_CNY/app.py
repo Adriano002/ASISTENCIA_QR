@@ -506,24 +506,27 @@ class QRVideoTransformer:
 # FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (CON CÁMARA TRASERA)
 # ============================================================
 
+# ============================================================
+# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (SOLO TRASERA)
+# ============================================================
+
 def mostrar_camara_vivo():
-    """Muestra la cámara en vivo con detección de QR - Cámara trasera"""
+    """Muestra la cámara trasera en vivo con detección de QR"""
     
-    st.subheader("📷 Cámara en Vivo")
+    st.subheader("📷 Cámara en Vivo (Trasera)")
     st.caption("Apunta la cámara trasera al QR. Se detectará automáticamente")
-    st.info("💡 En celular: usa la cámara trasera (la de atrás)")
     
     # Estado para el QR detectado
     if 'dni_qr_vivo' not in st.session_state:
         st.session_state.dni_qr_vivo = None
     
-    # Iniciar stream con cámara trasera
+    # Iniciar stream - SOLO CÁMARA TRASERA
     webrtc_streamer(
         key="qr-scanner-vivo",
         video_transformer_factory=QRVideoTransformer,
         media_stream_constraints={
             "video": {
-                "facingMode": "environment",  # 🔴 CÁMARA TRASERA
+                "facingMode": {"exact": "environment"},  # 🔴 FUERZA TRASERA
                 "width": {"ideal": 640},
                 "height": {"ideal": 480},
             },
@@ -532,61 +535,6 @@ def mostrar_camara_vivo():
         async_processing=True,
     )
     
-    # Mostrar el QR detectado si existe
-    if st.session_state.dni_qr_vivo:
-        dni = st.session_state.dni_qr_vivo
-        
-        st.success(f"✅ QR detectado: {dni}")
-        
-        alumno = get_alumno(dni)
-        if alumno:
-            st.info(f"👤 {alumno[2]}, {alumno[1]} - {alumno[3]} (Turno: {alumno[4]})")
-            
-            st.markdown("---")
-            st.subheader("📝 Registrar Asistencia")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("✅ Puntual", key="vivo_puntual", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Puntual", "qr_vivo")
-                    if ok:
-                        audit(st.session_state.user, f"QR Vivo {dni}")
-                        st.success(f"✔ {msg}")
-                        st.balloons()
-                        st.session_state.dni_qr_vivo = None
-                        st.rerun()
-                    else:
-                        st.warning(f"⚠️ {msg}")
-            with col2:
-                if st.button("🟡 Tardanza", key="vivo_tardanza", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Tardanza", "qr_vivo")
-                    if ok:
-                        audit(st.session_state.user, f"QR Vivo Tardanza {dni}")
-                        st.warning(f"⚠️ {msg}")
-                        st.session_state.dni_qr_vivo = None
-                        st.rerun()
-                    else:
-                        st.warning(f"⚠️ {msg}")
-            with col3:
-                if st.button("🔴 Falta", key="vivo_falta", use_container_width=True):
-                    ok, msg = registrar_asistencia(dni, "Falta", "qr_vivo")
-                    if ok:
-                        audit(st.session_state.user, f"QR Vivo Falta {dni}")
-                        st.error(f"❌ {msg}")
-                        st.session_state.dni_qr_vivo = None
-                        st.rerun()
-                    else:
-                        st.warning(f"⚠️ {msg}")
-        else:
-            st.error(f"❌ DNI {dni} no encontrado")
-            if st.button("Limpiar", use_container_width=True):
-                st.session_state.dni_qr_vivo = None
-                st.rerun()
-    
-    # Botón para reiniciar
-    if st.button("🔄 Reiniciar detección", use_container_width=True):
-        st.session_state.dni_qr_vivo = None
-        st.rerun()
 
 # ============================================================
 # 6. SESIÓN
