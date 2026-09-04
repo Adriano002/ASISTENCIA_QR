@@ -25,7 +25,6 @@ BACKUP_DIR = "backups"
 
 # 1. MIGRACIÓN AUTOMÁTICA
 
-
 def migrar_base_datos():
     """Verifica y agrega todas las columnas faltantes automáticamente"""
     try:
@@ -77,8 +76,8 @@ def migrar_base_datos():
     except:
         pass
 
-# ============================================================
-# 2. INICIALIZACIÓN DE BASE DE DATOS
+
+#base de datos
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
@@ -123,9 +122,7 @@ def init_db():
 init_db()
 migrar_base_datos()
 
-# ============================================================
-# 3. FUNCIONES
-# ============================================================
+# definimos las funciones
 
 def audit(usuario, accion):
     with get_conn() as conn:
@@ -351,9 +348,7 @@ def restore_backup(nombre):
         return True, "Restaurado"
     return False, "No encontrado"
 
-# ============================================================
-# 4. FUNCIONES PARA GENERAR PDF Y ZIP DE QR
-# ============================================================
+# generar pdf y comprimido
 
 def generar_pdf_qr(seccion, df_alumnos):
     """Genera un PDF con todos los QR de una sección"""
@@ -431,14 +426,7 @@ def generar_zip_qr(seccion, df_alumnos):
     return zip_path, f"ZIP generado con {len(df_alumnos)} QR"
 
 
-# ============================================================
-# 5. FUNCIÓN PARA ESCANEAR QR (CON OPENCV - SIN PYZBAR)
-# ============================================================
-
-# ============================================================
-# 5. FUNCIÓN PARA ESCANEAR QR (CON OPENCV - MÁS CONFIABLE)
-# ============================================================
-
+# detecta el qr
 def procesar_qr(imagen_bytes):
     """Procesa una imagen y extrae el código QR usando OpenCV"""
     try:
@@ -455,15 +443,10 @@ def procesar_qr(imagen_bytes):
         return None, "No se detectó ningún código QR"
     except Exception as e:
         return None, f"Error al leer: {e}"
-    # ============================================================
-# 5.1 CLASE PARA CÁMARA EN TIEMPO REAL
-# ============================================================
 
 
-# ============================================================
-# CLASE PARA CÁMARA EN VIVO (CORREGIDA - GUARDA EN SESSION_STATE)
-# ============================================================
 
+#clade decamara
 class QRVideoTransformer:
     def __init__(self):
         self.dni_detectado = None
@@ -496,34 +479,7 @@ class QRVideoTransformer:
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# ============================================================
-# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO
-# ============================================================
-
-# ============================================================
-# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (CORREGIDA)
-# ============================================================
-
-# ============================================================
-# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (CON CÁMARA TRASERA)
-# ============================================================
-
-# ============================================================
-# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (SOLO TRASERA)
-# ============================================================
-
-# ============================================================
-# FUNCIÓN PARA MOSTRAR CÁMARA EN VIVO (SIN OverconstrainedError)
-# ============================================================
-
-# ============================================================
-# FUNCIÓN PARA CÁMARA (VERSIÓN CELULAR - LA QUE FUNCIONA)
-# ============================================================
-
-# ============================================================
-# FUNCIÓN PARA CÁMARA CON BOTÓN DE CAMBIO MANUAL
-# ============================================================
-
+#mostrar la camara
 def mostrar_camara_vivo():
     """Cámara con botón manual para cambiar entre frontal/trasera"""
     
@@ -535,21 +491,6 @@ def mostrar_camara_vivo():
     
     if 'dni_qr_foto' not in st.session_state:
         st.session_state.dni_qr_foto = None
-    
-    # BOTÓN PARA CAMBIAR DE CÁMARA
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        if st.session_state.camara_trasera:
-            st.info("📷 Usando cámara TRASERA (atrás)")
-        else:
-            st.info("🤳 Usando cámara FRONTAL (selfie)")
-    
-    with col2:
-        if st.button("🔄 Cambiar cámara", use_container_width=True):
-            st.session_state.camara_trasera = not st.session_state.camara_trasera
-            st.rerun()
-    
-    st.caption("💡 Si la cámara no cambia, toca el botón de nuevo")
     
     # Determinar facingMode
     if st.session_state.camara_trasera:
@@ -635,9 +576,7 @@ def mostrar_camara_vivo():
                 st.session_state.dni_qr_foto = None
                 st.rerun()
 
-# ============================================================
 # 6. SESIÓN
-# ============================================================
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -645,10 +584,8 @@ if 'logged_in' not in st.session_state:
     st.session_state.rol = None
     st.session_state.permisos = []
 
-# ============================================================
-# 7. LOGIN
-# ============================================================
 
+#login
 if not st.session_state.logged_in:
     st.title("🏫 Control de Asistencia")
     with st.form("login_form"):
@@ -672,10 +609,8 @@ if not st.session_state.logged_in:
                 st.error("Credenciales inválidas")
     st.stop()
 
-# ============================================================
-# 8. SIDEBAR
-# ============================================================
 
+# barra de info
 with st.sidebar:
     st.write(f"**👤 {st.session_state.user}**")
     st.write(f"**🎯 {st.session_state.rol}**")
@@ -685,11 +620,8 @@ with st.sidebar:
         audit(st.session_state.user, "Logout")
         st.session_state.logged_in = False
         st.rerun()
-
-# ============================================================
-# 9. CONTENIDO PRINCIPAL
-# ============================================================
-
+        
+# ventanas principales
 st.title("📚 Sistema de Asistencia")
 
 # Métricas
@@ -705,10 +637,8 @@ col2.metric("✅ Asistencias Hoy", hoy)
 col3.metric("📊 Total Asistencias", total_asistencias)
 st.divider()
 
-# ============================================================
-# 10. TABS
-# ============================================================
 
+# pestañas
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     tabs = st.tabs([
         "🚪 Registrar", "👥 Alumnos", "📋 Semáforo", "📊 Reportes", 
@@ -717,18 +647,8 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
 else:
     tabs = st.tabs(["📋 Mi Aula", "📊 Reportes", "📝 Justificaciones"])
 
-# ============================================================
-# 11. TAB: REGISTRAR
-# 
-# ============================================================
+# registro de asistencias
 
-# ============================================================
-# 11. TAB: REGISTRAR (CON CÁMARA EN VIVO FUNCIONAL)
-# ============================================================
-
-# ============================================================
-# 11. TAB: REGISTRAR (SOLO CÁMARA EN VIVO + MANUAL)
-# ============================================================
 
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[0]:
@@ -745,15 +665,14 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                 key="modo_registro"
             )
             
-            # ==========================================
-            # OPCIÓN 1: CÁMARA EN VIVO
-            # ==========================================
+            
+            # camara en vivo
+            
             if modo == "📷 Cámara en vivo":
                 mostrar_camara_vivo()
-            
-            # ==========================================
-            # OPCIÓN 2: SELECCIÓN MANUAL
-            # ==========================================
+          
+            # registro manual
+           
             else:
                 st.info("📋 Seleccione la sección y el alumno manualmente")
                 
@@ -813,10 +732,7 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                                     else:
                                         st.warning(f"⚠️ {msg}")
 
-# ============================================================
-# 12. TAB: ALUMNOS
-# ============================================================
-
+# alumnos
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[1]:
         if not tiene_permiso("alumnos"):
@@ -939,10 +855,7 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                 else:
                     st.info("No hay secciones registradas")
 
-# ============================================================
-# 13. TAB: SEMÁFORO
-# ============================================================
-
+# semáforo
 idx_sema = 2 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"] else 0
 with tabs[idx_sema]:
     st.subheader("📋 Semáforo de Asistencias")
@@ -963,9 +876,7 @@ with tabs[idx_sema]:
                             "Faltas Efectivas": fe, "Estado": estado})
             st.dataframe(pd.DataFrame(data))
 
-# ============================================================
-# 14. TAB: REPORTES
-# ============================================================
+# reportes
 
 idx_rep = 3 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"] else 1
 with tabs[idx_rep]:
@@ -1003,10 +914,7 @@ with tabs[idx_rep]:
                         if delete_asistencia(id):
                             audit(st.session_state.user, f"Eliminó asistencia {id}")
                             st.success("✅ Eliminado"); st.rerun()
-
-# ============================================================
-# 15. TAB: JUSTIFICACIONES
-# ============================================================
+# justificaciones
 
 idx_just = 4 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"] else 2
 with tabs[idx_just]:
@@ -1046,11 +954,7 @@ with tabs[idx_just]:
                             audit(st.session_state.user, f"Eliminó justificación {id}")
                             st.success("✅ Eliminado"); st.rerun()
 
-# ============================================================
-# 16. TAB: CARNETS (CON DESCARGA MASIVA)
-# ============================================================
-
-
+# carnets
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[5]:
         st.subheader("🖨️ Carnets QR")
@@ -1068,7 +972,7 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
             else:
                 st.write(f"**{len(df)} alumnos en {sec}**")
                 
-                # Botones de descarga masiva
+                # Botones de descarga m
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
@@ -1194,9 +1098,7 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                         st.info("No hay alumnos en esta sección")
 
 
-# ============================================================
-# 18. TAB: BACKUP
-# ============================================================
+#BACKUP
 
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[7]:
@@ -1221,10 +1123,8 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
             else:
                 st.info("Sin backups")
 
-# ============================================================
-# 19. TAB: ADMIN
-# ============================================================
 
+# Administrador
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[7]:
         if not tiene_permiso("admin"):
