@@ -8,7 +8,6 @@ from io import BytesIO
 import os
 import shutil
 from PIL import Image
-from pyzbar.pyzbar import decode
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
@@ -432,20 +431,24 @@ def generar_zip_qr(seccion, df_alumnos):
     
     return zip_path, f"ZIP generado con {len(df_alumnos)} QR"
 
+
 # ============================================================
-# 5. FUNCIÓN PARA ESCANEAR QR
+# 5. FUNCIÓN PARA ESCANEAR QR (CON OPENCV - SIN PYZBAR)
 # ============================================================
 
 def procesar_qr(imagen_bytes):
-    """Procesa una imagen y extrae el código QR"""
+    """Procesa una imagen y extrae el código QR usando OpenCV"""
     try:
-        img = Image.open(BytesIO(imagen_bytes))
-        decoded = decode(img)
+        # Convertir bytes a imagen numpy
+        nparr = np.frombuffer(imagen_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        if decoded:
-            for obj in decoded:
-                dni = obj.data.decode('utf-8').strip()
-                return dni, None
+        # Detector QR de OpenCV
+        detector = cv2.QRCodeDetector()
+        data, bbox, _ = detector.detectAndDecode(img)
+        
+        if data:
+            return data.strip(), None
         return None, "No se detectó ningún código QR"
     except Exception as e:
         return None, f"Error al leer: {e}"
