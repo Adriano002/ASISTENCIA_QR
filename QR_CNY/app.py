@@ -13,25 +13,22 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 import tempfile
 import zipfile
-
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
 import numpy as np
-import av
 
 st.set_page_config(page_title="Asistencia Escolar", page_icon="🏫", layout="wide")
 DB_PATH = "asistencia_enterprise.db"
 BACKUP_DIR = "backups"
 
+# ============================================================
 # 1. MIGRACIÓN AUTOMÁTICA
+# ============================================================
 
 def migrar_base_datos():
-    """Verifica y agrega todas las columnas faltantes automáticamente"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # --- TABLA: usuarios ---
         cursor.execute("PRAGMA table_info(usuarios)")
         columnas = [col[1] for col in cursor.fetchall()]
         if 'turno_asignado' not in columnas:
@@ -41,7 +38,6 @@ def migrar_base_datos():
             try: cursor.execute("ALTER TABLE usuarios ADD COLUMN permisos TEXT DEFAULT ''")
             except: pass
         
-        # --- TABLA: alumnos ---
         cursor.execute("PRAGMA table_info(alumnos)")
         columnas = [col[1] for col in cursor.fetchall()]
         if 'turno' not in columnas:
@@ -51,7 +47,6 @@ def migrar_base_datos():
             try: cursor.execute("ALTER TABLE alumnos ADD COLUMN fecha_registro TEXT DEFAULT CURRENT_DATE")
             except: pass
         
-        # --- TABLA: asistencias ---
         cursor.execute("PRAGMA table_info(asistencias)")
         columnas = [col[1] for col in cursor.fetchall()]
         if 'turno' not in columnas:
@@ -64,7 +59,6 @@ def migrar_base_datos():
             try: cursor.execute("ALTER TABLE asistencias ADD COLUMN registrado_por TEXT DEFAULT ''")
             except: pass
         
-        # --- TABLA: justificaciones ---
         cursor.execute("PRAGMA table_info(justificaciones)")
         columnas = [col[1] for col in cursor.fetchall()]
         if 'fecha_registro' not in columnas:
@@ -76,8 +70,9 @@ def migrar_base_datos():
     except:
         pass
 
-
-#base de datos
+# ============================================================
+# 2. BASE DE DATOS
+# ============================================================
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
@@ -122,7 +117,9 @@ def init_db():
 init_db()
 migrar_base_datos()
 
-# definimos las funciones
+# ============================================================
+# 3. FUNCIONES PRINCIPALES
+# ============================================================
 
 def audit(usuario, accion):
     with get_conn() as conn:
@@ -331,29 +328,13 @@ def resumen_alumno(dni):
         j = conn.execute("SELECT COUNT(*) FROM justificaciones WHERE dni=?", (dni,)).fetchone()[0]
         return {'asistencias':a, 'tardanzas':t, 'faltas':f, 'justificaciones':j, 'faltas_efectivas':max(0,f-j)}
 
-def backup_db():
-    if not os.path.exists(BACKUP_DIR): os.makedirs(BACKUP_DIR)
-    archivo = os.path.join(BACKUP_DIR, f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
-    shutil.copy2(DB_PATH, archivo)
-    return archivo
-
-def list_backups():
-    if not os.path.exists(BACKUP_DIR): return []
-    return sorted([f for f in os.listdir(BACKUP_DIR) if f.endswith('.db')], reverse=True)
-
-def restore_backup(nombre):
-    ruta = os.path.join(BACKUP_DIR, nombre)
-    if os.path.exists(ruta):
-        shutil.copy2(ruta, DB_PATH)
-        return True, "Restaurado"
-    return False, "No encontrado"
-
-# generar pdf y comprimido
+# ============================================================
+# 4. QR Y DETECCIÓN
+# ============================================================
 
 def generar_pdf_qr(seccion, df_alumnos):
-    """Genera un PDF con todos los QR de una sección"""
     if df_alumnos.empty:
-        return None, "No hay alumnos en esta sección"
+        return None, "No hay alumnos"
     
     pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf').name
     c = canvas.Canvas(pdf_path, pagesize=landscape(A4))
@@ -379,7 +360,6 @@ def generar_pdf_qr(seccion, df_alumnos):
         img_qr.save(qr_temp, "PNG")
         
         c.drawImage(qr_temp, x_pos, y_pos, width=qr_size, height=qr_size)
-        
         c.setFont("Helvetica", 10)
         nombre_completo = f"{row['apellidos']}, {row['nombres']}"
         c.drawCentredString(x_pos + qr_size/2, y_pos - 15, nombre_completo[:30])
@@ -389,11 +369,9 @@ def generar_pdf_qr(seccion, df_alumnos):
         
         count += 1
         x_pos += qr_size + spacing_x
-        
         if count % cols == 0:
             x_pos = spacing_x
             y_pos -= qr_size + spacing_y
-            
         if count % (cols * rows) == 0 and count < len(df_alumnos):
             c.showPage()
             x_pos = spacing_x
@@ -403,9 +381,8 @@ def generar_pdf_qr(seccion, df_alumnos):
     return pdf_path, f"PDF generado con {len(df_alumnos)} QR"
 
 def generar_zip_qr(seccion, df_alumnos):
-    """Genera un ZIP con todos los QR individuales"""
     if df_alumnos.empty:
-        return None, "No hay alumnos en esta sección"
+        return None, "No hay alumnos"
     
     zip_path = tempfile.NamedTemporaryFile(delete=False, suffix='.zip').name
     
@@ -425,98 +402,35 @@ def generar_zip_qr(seccion, df_alumnos):
     
     return zip_path, f"ZIP generado con {len(df_alumnos)} QR"
 
-
-# detecta el qr
 def procesar_qr(imagen_bytes):
-    """Procesa una imagen y extrae el código QR usando OpenCV"""
     try:
-        # Convertir bytes a imagen numpy
         nparr = np.frombuffer(imagen_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        # Detector QR de OpenCV
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
-        
         if data:
             return data.strip(), None
         return None, "No se detectó ningún código QR"
     except Exception as e:
         return None, f"Error al leer: {e}"
 
+# ============================================================
+# 5. CÁMARA (ST.CAMERA_INPUT)
+# ============================================================
 
-
-#clade decamara
-class QRVideoTransformer:
-    def __init__(self):
-        self.dni_detectado = None
-        self.detector = cv2.QRCodeDetector()
-        self.ultimo_dni = None
-    
-    def recv(self, frame):
-        """Procesa cada frame de video"""
-        img = frame.to_ndarray(format="bgr24")
-        
-        # Detectar QR
-        data, bbox, _ = self.detector.detectAndDecode(img)
-        
-        if data:
-            self.dni_detectado = data.strip()
-            # Guardar en session_state para que la app lo vea
-            if self.dni_detectado != self.ultimo_dni:
-                self.ultimo_dni = self.dni_detectado
-                st.session_state.dni_qr_vivo = self.dni_detectado
-            
-            # Dibujar rectángulo verde
-            if bbox is not None:
-                bbox = bbox.astype(int)
-                for i in range(len(bbox)):
-                    cv2.line(img, tuple(bbox[i][0]), tuple(bbox[(i+1) % len(bbox)][0]), (0, 255, 0), 3)
-                cv2.putText(img, f"QR: {data}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        else:
-            self.dni_detectado = None
-        
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-
-#mostrar la camara
 def mostrar_camara_vivo():
-    """Cámara con botón manual para cambiar entre frontal/trasera"""
-    
-    st.subheader("📷 Escanear QR")
-    
-    # Estado para la cámara
-    if 'camara_trasera' not in st.session_state:
-        st.session_state.camara_trasera = True
-    
     if 'dni_qr_foto' not in st.session_state:
         st.session_state.dni_qr_foto = None
     
-    # Determinar facingMode
-    if st.session_state.camara_trasera:
-        facing_mode = "environment"  # Trasera
-    else:
-        facing_mode = "user"  # Frontal
+    st.info("📸 Toma una foto del QR. En celular: toca el ícono 🔄 para cambiar a cámara trasera")
     
-    # Intentar abrir la cámara con el facingMode seleccionado
-    try:
-        imagen = st.camera_input(
-            "📸 Tomar foto del QR",
-            key="camara_qr",
-            disabled=False
-        )
-    except Exception as e:
-        st.error(f"Error al abrir la cámara: {e}")
-        imagen = None
+    imagen = st.camera_input("📸 Tomar foto", key="camara_qr")
     
     if imagen is not None:
         st.image(imagen, width=200)
-        st.caption("✅ Imagen capturada")
-        
         if st.button("🔍 Procesar QR", use_container_width=True, type="primary"):
-            with st.spinner("🔍 Procesando..."):
+            with st.spinner("Procesando..."):
                 dni, error = procesar_qr(imagen.getvalue())
-            
             if error:
                 st.warning(f"⚠️ {error}")
             elif dni:
@@ -526,21 +440,16 @@ def mostrar_camara_vivo():
             else:
                 st.error("❌ No se detectó QR")
     
-    # Mostrar QR detectado
     if st.session_state.dni_qr_foto:
         dni = st.session_state.dni_qr_foto
-        
         alumno = get_alumno(dni)
         if alumno:
             st.success(f"✅ QR detectado: {dni}")
             st.info(f"👤 {alumno[2]}, {alumno[1]} - {alumno[3]}")
             
-            st.markdown("---")
-            st.subheader("📝 Registrar Asistencia")
-            
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("✅ Puntual", key="cam_puntual", use_container_width=True):
+                if st.button("✅ Puntual", key="cam_p", use_container_width=True):
                     ok, msg = registrar_asistencia(dni, "Puntual", "qr_cam")
                     if ok:
                         audit(st.session_state.user, f"QR Cam {dni}")
@@ -551,7 +460,7 @@ def mostrar_camara_vivo():
                     else:
                         st.warning(f"⚠️ {msg}")
             with col2:
-                if st.button("🟡 Tardanza", key="cam_tardanza", use_container_width=True):
+                if st.button("🟡 Tardanza", key="cam_t", use_container_width=True):
                     ok, msg = registrar_asistencia(dni, "Tardanza", "qr_cam")
                     if ok:
                         audit(st.session_state.user, f"QR Cam Tardanza {dni}")
@@ -561,7 +470,7 @@ def mostrar_camara_vivo():
                     else:
                         st.warning(f"⚠️ {msg}")
             with col3:
-                if st.button("🔴 Falta", key="cam_falta", use_container_width=True):
+                if st.button("🔴 Falta", key="cam_f", use_container_width=True):
                     ok, msg = registrar_asistencia(dni, "Falta", "qr_cam")
                     if ok:
                         audit(st.session_state.user, f"QR Cam Falta {dni}")
@@ -570,13 +479,10 @@ def mostrar_camara_vivo():
                         st.rerun()
                     else:
                         st.warning(f"⚠️ {msg}")
-        else:
-            st.error(f"❌ DNI {dni} no encontrado")
-            if st.button("Limpiar", use_container_width=True):
-                st.session_state.dni_qr_foto = None
-                st.rerun()
 
-# 6. SESIÓN
+# ============================================================
+# 6. SESIÓN Y LOGIN
+# ============================================================
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -584,8 +490,6 @@ if 'logged_in' not in st.session_state:
     st.session_state.rol = None
     st.session_state.permisos = []
 
-
-#login
 if not st.session_state.logged_in:
     st.title("🏫 Control de Asistencia")
     with st.form("login_form"):
@@ -609,8 +513,10 @@ if not st.session_state.logged_in:
                 st.error("Credenciales inválidas")
     st.stop()
 
+# ============================================================
+# 7. SIDEBAR
+# ============================================================
 
-# barra de info
 with st.sidebar:
     st.write(f"**👤 {st.session_state.user}**")
     st.write(f"**🎯 {st.session_state.rol}**")
@@ -620,11 +526,13 @@ with st.sidebar:
         audit(st.session_state.user, "Logout")
         st.session_state.logged_in = False
         st.rerun()
-        
-# ventanas principales
+
+# ============================================================
+# 8. CONTENIDO PRINCIPAL
+# ============================================================
+
 st.title("📚 Sistema de Asistencia")
 
-# Métricas
 with get_conn() as conn:
     total = pd.read_sql("SELECT COUNT(*) as c FROM alumnos", conn)['c'][0]
     hoy = pd.read_sql("SELECT COUNT(*) as c FROM asistencias WHERE fecha=?", 
@@ -637,8 +545,10 @@ col2.metric("✅ Asistencias Hoy", hoy)
 col3.metric("📊 Total Asistencias", total_asistencias)
 st.divider()
 
+# ============================================================
+# 9. TABS
+# ============================================================
 
-# pestañas
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     tabs = st.tabs([
         "🚪 Registrar", "👥 Alumnos", "📋 Semáforo", "📊 Reportes", 
@@ -647,8 +557,9 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
 else:
     tabs = st.tabs(["📋 Mi Aula", "📊 Reportes", "📝 Justificaciones"])
 
-# registro de asistencias
-
+# ============================================================
+# 10. REGISTRAR
+# ============================================================
 
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[0]:
@@ -657,55 +568,40 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
         else:
             st.subheader("🚪 Registrar Asistencia")
             
-            # Opciones de registro (SOLO 2)
             modo = st.radio(
-                "Seleccione el método de registro:", 
-                ["📷 Cámara en vivo", "📋 Selección Manual"], 
+                "Método:", 
+                ["📷 Tomar foto QR", "📋 Selección Manual"], 
                 horizontal=True, 
                 key="modo_registro"
             )
             
-            
-            # camara en vivo
-            
-            if modo == "📷 Cámara en vivo":
+            if modo == "📷 Tomar foto QR":
                 mostrar_camara_vivo()
-          
-            # registro manual
-           
             else:
-                st.info("📋 Seleccione la sección y el alumno manualmente")
+                st.info("📋 Seleccione la sección y el alumno")
                 
-                secs = get_secciones_user(st.session_state.user) or get_secciones()
+                secs = get_secciones_user(st.session_state.user) or []
                 if not secs:
                     st.warning("Sin secciones asignadas")
                 else:
-                    sec = st.selectbox("📚 Seleccione la sección:", secs, key="sec_registro_manual")
+                    sec = st.selectbox("Sección:", secs, key="sec_registro")
                     df = listar_alumnos(sec)
                     
                     if df.empty:
-                        st.info("No hay alumnos en esta sección")
+                        st.info("No hay alumnos")
                     else:
                         df['display'] = df['apellidos'] + ", " + df['nombres'] + " (DNI: " + df['dni'] + ")"
-                        alumno_seleccionado = st.selectbox(
-                            "👤 Seleccione el alumno:", 
-                            df['display'].tolist(), 
-                            key="alumno_registro_manual"
-                        )
+                        alumno = st.selectbox("Alumno:", df['display'].tolist(), key="alumno_registro")
                         
-                        if alumno_seleccionado:
-                            dni = alumno_seleccionado.split("(DNI: ")[-1].replace(")", "").strip()
-                            
-                            alumno = get_alumno(dni)
-                            if alumno:
-                                st.info(f"👤 {alumno[2]}, {alumno[1]} - {alumno[3]} (Turno: {alumno[4]})")
-                            
-                            st.markdown("---")
-                            st.subheader("📝 Registrar Asistencia")
+                        if alumno:
+                            dni = alumno.split("(DNI: ")[-1].replace(")", "").strip()
+                            alumno_data = get_alumno(dni)
+                            if alumno_data:
+                                st.info(f"👤 {alumno_data[2]}, {alumno_data[1]} - {alumno_data[3]}")
                             
                             col1, col2, col3 = st.columns(3)
                             with col1:
-                                if st.button("✅ Puntual", key="manual_puntual", use_container_width=True):
+                                if st.button("✅ Puntual", key="man_p", use_container_width=True):
                                     ok, msg = registrar_asistencia(dni, "Puntual", "manual")
                                     if ok:
                                         audit(st.session_state.user, f"Asistencia Manual {dni}")
@@ -714,7 +610,7 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                                     else:
                                         st.warning(f"⚠️ {msg}")
                             with col2:
-                                if st.button("🟡 Tardanza", key="manual_tardanza", use_container_width=True):
+                                if st.button("🟡 Tardanza", key="man_t", use_container_width=True):
                                     ok, msg = registrar_asistencia(dni, "Tardanza", "manual")
                                     if ok:
                                         audit(st.session_state.user, f"Tardanza Manual {dni}")
@@ -723,7 +619,7 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                                     else:
                                         st.warning(f"⚠️ {msg}")
                             with col3:
-                                if st.button("🔴 Falta", key="manual_falta", use_container_width=True):
+                                if st.button("🔴 Falta", key="man_f", use_container_width=True):
                                     ok, msg = registrar_asistencia(dni, "Falta", "manual")
                                     if ok:
                                         audit(st.session_state.user, f"Falta Manual {dni}")
@@ -732,7 +628,10 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
                                     else:
                                         st.warning(f"⚠️ {msg}")
 
-# alumnos
+# ============================================================
+# 11. ALUMNOS
+# ============================================================
+
 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
     with tabs[1]:
         if not tiene_permiso("alumnos"):
@@ -817,403 +716,23 @@ if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
             
             with tabs2[5]:
                 st.subheader("🔄 Cambiar Turno de Sección")
-                st.caption("⚠️ IMPORTANTE: Al cambiar el turno de una sección, los usuarios con permisos en esta sección verán automáticamente los cambios")
-                
                 with get_conn() as conn:
                     df_t = pd.read_sql("SELECT grado_seccion, turno FROM alumnos GROUP BY grado_seccion, turno ORDER BY grado_seccion", conn)
-                
                 if not df_t.empty:
-                    # Mostrar tabla actual
-                    st.write("**Secciones y sus turnos actuales:**")
                     st.dataframe(df_t)
-                    
-                    sec = st.selectbox("Seleccione la sección para cambiar:", df_t['grado_seccion'].unique().tolist(), key="sec_turno")
+                    sec = st.selectbox("Sección:", df_t['grado_seccion'].unique().tolist(), key="sec_turno")
                     if sec:
                         t_actual = df_t[df_t['grado_seccion']==sec]['turno'].iloc[0]
                         t_nuevo = "Tarde" if t_actual=="Mañana" else "Mañana"
-                        
-                        st.info(f"Turno actual: **{t_actual}** → Nuevo turno: **{t_nuevo}**")
-                        
-                        # Mostrar usuarios afectados
-                        with get_conn() as conn2:
-                            df_usuarios_afectados = pd.read_sql(
-                                "SELECT username, rol, turno_asignado FROM usuarios WHERE seccion_asignada LIKE ?", 
-                                conn2, params=(f"%{sec}%",)
-                            )
-                            if not df_usuarios_afectados.empty:
-                                st.warning(f"⚠️ Usuarios que verán cambios (tienen permisos en {sec}):")
-                                st.dataframe(df_usuarios_afectados)
-                        
-                        if st.button(f"🔄 Cambiar {sec} a {t_nuevo}", key="btn_cambiar_turno_sec", use_container_width=True):
+                        if st.button(f"Cambiar a {t_nuevo}", key="btn_cambiar_turno_sec"):
                             with get_conn() as conn3:
                                 conn3.execute("UPDATE alumnos SET turno=? WHERE grado_seccion=?", (t_nuevo, sec))
                                 conn3.commit()
-                            audit(st.session_state.user, f"Cambió turno de sección {sec} de {t_actual} a {t_nuevo}")
-                            st.success(f"✅ Sección {sec} cambiada a turno {t_nuevo}")
-                            st.info("💡 Los usuarios con permisos en esta sección verán automáticamente los cambios")
-                            st.rerun()
-                else:
-                    st.info("No hay secciones registradas")
+                            audit(st.session_state.user, f"Turno {sec} a {t_nuevo}")
+                            st.success("✅ Actualizado"); st.rerun()
 
-# semáforo
-idx_sema = 2 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"] else 0
-with tabs[idx_sema]:
-    st.subheader("📋 Semáforo de Asistencias")
-    secs = get_secciones_user(st.session_state.user) or get_secciones()
-    if secs:
-        sec = st.selectbox("Sección:", secs, key="semaforo_sec")
-        df = listar_alumnos(sec)
-        if not df.empty:
-            data = []
-            for _, row in df.iterrows():
-                r = resumen_alumno(row['dni'])
-                fe = r['faltas_efectivas']
-                estado = "🟢 Normal" if fe==0 else "🟡 Alerta" if fe<=2 else "🟠 Riesgo" if fe<=4 else "🔴 Peligro"
-                data.append({"Alumno": f"{row['apellidos']}, {row['nombres']}", 
-                            "Asistencias": r['asistencias'],
-                            "Tardanzas": r['tardanzas'], "Faltas": r['faltas'], 
-                            "Justificaciones": r['justificaciones'], 
-                            "Faltas Efectivas": fe, "Estado": estado})
-            st.dataframe(pd.DataFrame(data))
+# ============================================================
+# 12. SEMÁFORO
+# ============================================================
 
-# reportes
-
-idx_rep = 3 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"] else 1
-with tabs[idx_rep]:
-    st.subheader("📊 Reporte Diario")
-    c1,c2 = st.columns(2)
-    with c1:
-        fecha = st.date_input("Fecha:", value=datetime.now(), key="fecha_reporte")
-    with c2:
-        secs = ["TODAS LAS SECCIONES"] + get_secciones()
-        sec = st.selectbox("Sección:", secs, key="sec_reporte")
-    
-    df = get_asistencias(fecha.strftime("%Y-%m-%d"), sec)
-    if df.empty:
-        st.info("Sin registros")
-    else:
-        st.write(f"**Total: {len(df)}**")
-        c1,c2,c3 = st.columns(3)
-        e = df['estado'].value_counts()
-        c1.metric("✅ Puntuales", e.get('Puntual',0))
-        c2.metric("🟡 Tardanzas", e.get('Tardanza',0))
-        c3.metric("🔴 Faltas", e.get('Falta',0))
-        st.dataframe(df)
-        
-        csv = df.to_csv(index=False)
-        st.download_button("📥 Descargar CSV", csv, f"reporte_{fecha.strftime('%Y%m%d')}.csv", 
-                          "text/csv", key="descargar_reporte")
-        
-        if tiene_permiso("admin"):
-            with st.expander("🗑️ Eliminar Registro"):
-                df['display'] = df['apellidos'] + ", " + df['nombres']
-                reg = st.selectbox("Seleccionar:", df['display'].tolist(), key="reg_eliminar")
-                if reg:
-                    id = df[df['display']==reg]['id'].iloc[0]
-                    if st.button("Eliminar", key="btn_eliminar_reg"):
-                        if delete_asistencia(id):
-                            audit(st.session_state.user, f"Eliminó asistencia {id}")
-                            st.success("✅ Eliminado"); st.rerun()
-# justificaciones
-
-idx_just = 4 if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"] else 2
-with tabs[idx_just]:
-    st.subheader("📝 Justificaciones")
-    
-    if tiene_permiso("justificaciones"):
-        with st.expander("➕ Nueva", expanded=False):
-            with st.form("add_just_form"):
-                with get_conn() as conn:
-                    df_a = pd.read_sql("SELECT dni, apellidos, nombres, grado_seccion FROM alumnos ORDER BY apellidos", conn)
-                if not df_a.empty:
-                    df_a['display'] = df_a['apellidos'] + ", " + df_a['nombres'] + f" ({df_a['grado_seccion']})"
-                    alum = st.selectbox("Alumno:", df_a['display'].tolist(), key="just_alum")
-                    fecha = st.date_input("Fecha:", key="just_fecha")
-                    motivo = st.text_area("Motivo:", key="just_motivo")
-                    if st.form_submit_button("Registrar"):
-                        if motivo:
-                            dni = df_a[df_a['display']==alum]['dni'].iloc[0]
-                            if add_just(dni, fecha, motivo):
-                                audit(st.session_state.user, f"Justificación {dni}")
-                                st.success("✅ Registrado"); st.rerun()
-                        else: st.error("Motivo obligatorio")
-    
-    df_j = get_just()
-    if df_j.empty:
-        st.info("Sin justificaciones")
-    else:
-        st.dataframe(df_j)
-        if tiene_permiso("admin"):
-            with st.expander("🗑️ Eliminar"):
-                df_j['display'] = df_j['apellidos'] + ", " + df_j['nombres']
-                j = st.selectbox("Seleccionar:", df_j['display'].tolist(), key="just_eliminar")
-                if j:
-                    id = df_j[df_j['display']==j]['id'].iloc[0]
-                    if st.button("Eliminar Justificación", key="btn_eliminar_just"):
-                        if delete_just(id):
-                            audit(st.session_state.user, f"Eliminó justificación {id}")
-                            st.success("✅ Eliminado"); st.rerun()
-
-# carnets
-if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
-    with tabs[5]:
-        st.subheader("🖨️ Carnets QR")
-        st.caption("Genera y descarga los códigos QR de los alumnos por sección")
-        
-        secs = get_secciones()
-        if not secs:
-            st.warning("No hay secciones registradas")
-        else:
-            sec = st.selectbox("Seleccione la sección:", secs, key="carnet_sec")
-            df = listar_alumnos(sec)
-            
-            if df.empty:
-                st.info("No hay alumnos en esta sección")
-            else:
-                st.write(f"**{len(df)} alumnos en {sec}**")
-                
-                # Botones de descarga m
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("📄 Descargar PDF con todos los QR", key="btn_pdf_qr", use_container_width=True):
-                        with st.spinner("Generando PDF..."):
-                            pdf_path, msg = generar_pdf_qr(sec, df)
-                            if pdf_path:
-                                with open(pdf_path, "rb") as f:
-                                    st.download_button(
-                                        "📥 Descargar PDF",
-                                        f,
-                                        f"carnets_{sec}_{datetime.now().strftime('%Y%m%d')}.pdf",
-                                        "application/pdf",
-                                        key="descargar_pdf"
-                                    )
-                                st.success(msg)
-                            else:
-                                st.error(msg)
-                
-                with col2:
-                    if st.button("📦 Descargar ZIP con todos los QR", key="btn_zip_qr", use_container_width=True):
-                        with st.spinner("Generando ZIP..."):
-                            zip_path, msg = generar_zip_qr(sec, df)
-                            if zip_path:
-                                with open(zip_path, "rb") as f:
-                                    st.download_button(
-                                        "📥 Descargar ZIP",
-                                        f,
-                                        f"carnets_{sec}_{datetime.now().strftime('%Y%m%d')}.zip",
-                                        "application/zip",
-                                        key="descargar_zip"
-                                    )
-                                st.success(msg)
-                            else:
-                                st.error(msg)
-                
-                with col3:
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        "📊 Descargar CSV",
-                        csv,
-                        f"alumnos_{sec}_{datetime.now().strftime('%Y%m%d')}.csv",
-                        "text/csv",
-                        key="descargar_csv_carnet"
-                    )
-                
-                st.divider()
-                
-                # Mostrar los QR individuales en cuadrícula
-                st.subheader("Vista previa de carnets")
-                st.caption("Cada código QR contiene el DNI del alumno para registro rápido")
-                
-                cols_qr = 4
-                for i in range(0, len(df), cols_qr):
-                    cols = st.columns(cols_qr)
-                    for j in range(cols_qr):
-                        if i + j < len(df):
-                            row = df.iloc[i + j]
-                            with cols[j]:
-                                qr = qrcode.QRCode(version=1, box_size=4, border=2)
-                                qr.add_data(row['dni'])
-                                qr.make(fit=True)
-                                img = qr.make_image(fill_color="black", back_color="white")
-                                buff = BytesIO()
-                                img.save(buff, format="PNG")
-                                
-                                st.image(buff.getvalue(), width=100)
-                                st.caption(f"{row['apellidos'][:10]}, {row['nombres'][:10]}")
-                                st.caption(f"DNI: {row['dni']}")
-                
-                # --- SOLO AQUÍ APARECE LA DESCARGA INDIVIDUAL ---
-                st.divider()
-                with st.expander("📥 Descargar QR individual"):
-                    if not df.empty:
-                        # Crear lista de opciones
-                        opciones = []
-                        for _, row in df.iterrows():
-                            opciones.append({
-                                'display': f"{row['apellidos']}, {row['nombres']} (DNI: {row['dni']})",
-                                'dni': row['dni']
-                            })
-                        
-                        opciones_display = [o['display'] for o in opciones]
-                        alumno_sel = st.selectbox("Seleccione el alumno:", opciones_display, key="qr_individual_carnet")
-                        
-                        if alumno_sel:
-                            # Buscar el DNI
-                            dni_seleccionado = None
-                            for opt in opciones:
-                                if opt['display'] == alumno_sel:
-                                    dni_seleccionado = opt['dni']
-                                    break
-                            
-                            if dni_seleccionado:
-                                # Buscar el alumno en el DataFrame
-                                alumno_data = df[df['dni'] == dni_seleccionado]
-                                
-                                if not alumno_data.empty:
-                                    row = alumno_data.iloc[0]
-                                    
-                                    # Generar QR
-                                    qr = qrcode.QRCode(version=1, box_size=6, border=2)
-                                    qr.add_data(row['dni'])
-                                    qr.make(fit=True)
-                                    img = qr.make_image(fill_color="black", back_color="white")
-                                    buff = BytesIO()
-                                    img.save(buff, format="PNG")
-                                    
-                                    col_img, col_btn = st.columns([1, 2])
-                                    with col_img:
-                                        st.image(buff.getvalue(), width=150)
-                                    with col_btn:
-                                        st.download_button(
-                                            "📥 Descargar QR",
-                                            buff.getvalue(),
-                                            f"qr_{row['dni']}_{row['apellidos']}.png",
-                                            "image/png",
-                                            key=f"descargar_qr_{row['dni']}"
-                                        )
-                                else:
-                                    st.error("❌ Alumno no encontrado")
-                    else:
-                        st.info("No hay alumnos en esta sección")
-
-
-#BACKUP
-
-if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
-    with tabs[7]:
-        st.subheader("💾 Backup")
-        c1,c2 = st.columns(2)
-        with c1:
-            if st.button("📤 Crear Backup", key="btn_crear_backup"):
-                arch = backup_db()
-                st.success(f"✅ {os.path.basename(arch)}")
-                with open(arch, "rb") as f:
-                    st.download_button("📥 Descargar", f, os.path.basename(arch), 
-                                      key="descargar_backup")
-        with c2:
-            backups = list_backups()
-            if backups:
-                sel = st.selectbox("Backups:", backups, key="sel_backup")
-                if st.button("🔄 Restaurar", key="btn_restaurar_backup"):
-                    ok, msg = restore_backup(sel)
-                    if ok:
-                        st.success(f"✅ {msg}"); st.rerun()
-                    else: st.error(msg)
-            else:
-                st.info("Sin backups")
-
-
-# Administrador
-if st.session_state.rol in ["Directivo", "Auxiliar de Puerta"]:
-    with tabs[7]:
-        if not tiene_permiso("admin"):
-            st.error("Sin permiso")
-        else:
-            st.subheader("⚙️ Administración")
-            tabs3 = st.tabs(["👤 Usuarios", "🔐 Seguridad", "📋 Auditoría"])
-            
-            with tabs3[0]:
-                st.subheader("Usuarios")
-                with st.expander("➕ Nuevo", expanded=False):
-                    with st.form("new_user_form"):
-                        c1,c2 = st.columns(2)
-                        with c1:
-                            u = st.text_input("Usuario*")
-                            p = st.text_input("Contraseña*", type="password")
-                        with c2:
-                            r = st.selectbox("Rol", ["Directivo","Auxiliar de Puerta","Docente"])
-                            t = st.selectbox("Turno:", ["Mañana","Tarde"])
-                            secs = ["TODAS"] + get_secciones()
-                            s = st.multiselect("Secciones:", secs, default=["TODAS"])
-                        perm = []
-                        col1,col2,col3 = st.columns(3)
-                        with col1:
-                            if st.checkbox("🚪 Puerta"): perm.append("puerta")
-                            if st.checkbox("👁️ Ver"): perm.append("ver_todo")
-                        with col2:
-                            if st.checkbox("📝 Just"): perm.append("justificaciones")
-                            if st.checkbox("⚙️ Admin"): perm.append("admin")
-                        with col3:
-                            if st.checkbox("👥 Alumnos"): perm.append("alumnos")
-                        if st.form_submit_button("Crear"):
-                            if u and p:
-                                sec_str = "TODAS" if "TODAS" in s else ",".join(s)
-                                if add_user(u,p,r,sec_str,t,",".join(perm)):
-                                    audit(st.session_state.user, f"Creó {u}")
-                                    st.success("✅ Creado"); st.rerun()
-                                else: st.error("Usuario existe")
-                            else: st.error("Campos obligatorios")
-                
-                df_u = get_users()
-                if not df_u.empty:
-                    st.dataframe(df_u)
-                    
-                    st.subheader("🔄 Cambiar Turno de Usuario")
-                    usr = st.selectbox("Usuario:", df_u['username'].tolist(), key="usr_turno")
-                    if usr:
-                        t_actual = get_turno_user(usr)
-                        t_nuevo = "Tarde" if t_actual=="Mañana" else "Mañana"
-                        st.info(f"Turno actual: **{t_actual}** → Nuevo: **{t_nuevo}**")
-                        if st.button(f"Cambiar a {t_nuevo}", key="btn_cambiar_turno_user", use_container_width=True):
-                            if update_turno_user(usr, t_nuevo):
-                                audit(st.session_state.user, f"Cambió turno de {usr} a {t_nuevo}")
-                                st.success(f"✅ Turno de {usr} cambiado a {t_nuevo}")
-                                st.rerun()
-                            else:
-                                st.error("Error al cambiar")
-                    
-                    st.subheader("🗑️ Eliminar Usuario")
-                    elim = [u for u in df_u['username'].tolist() if u not in ['directivo1','auxiliar1']]
-                    if elim:
-                        usr_e = st.selectbox("Seleccionar:", elim, key="del_user")
-                        if st.button("Eliminar Usuario", key="btn_del_user", use_container_width=True):
-                            ok, msg = delete_user(usr_e)
-                            if ok:
-                                audit(st.session_state.user, f"Eliminó {usr_e}")
-                                st.success(f"✅ {msg}"); st.rerun()
-                            else: st.error(msg)
-            
-            with tabs3[1]:
-                st.subheader("🔐 Cambiar Contraseña")
-                with st.form("chg_pass_form"):
-                    df_u = get_users()
-                    u = st.selectbox("Usuario:", df_u['username'].tolist(), key="usr_pass")
-                    n = st.text_input("Nueva*", type="password")
-                    c = st.text_input("Confirmar*", type="password")
-                    if st.form_submit_button("Cambiar"):
-                        if n and len(n)>=4:
-                            if n==c:
-                                if change_pass(u,n):
-                                    audit(st.session_state.user, f"Cambió pass {u}")
-                                    st.success("✅ Actualizado")
-                                else: st.error("Error")
-                            else: st.error("No coinciden")
-                        else: st.error("Mínimo 4 caracteres")
-            
-            with tabs3[2]:
-                st.subheader("📋 Auditoría")
-                with get_conn() as conn:
-                    df_a = pd.read_sql("SELECT * FROM auditoria ORDER BY id DESC LIMIT 100", conn)
-                if df_a.empty: st.info("Sin registros")
-                else: st.dataframe(df_a)
+idx_sema = 2 if st.session_state.rol in ["
