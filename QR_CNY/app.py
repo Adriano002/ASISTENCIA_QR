@@ -435,6 +435,10 @@ def generar_zip_qr(seccion, df_alumnos):
 # 5. FUNCIÓN PARA ESCANEAR QR (CON OPENCV - SIN PYZBAR)
 # ============================================================
 
+# ============================================================
+# 5. FUNCIÓN PARA ESCANEAR QR (CON OPENCV - MÁS CONFIABLE)
+# ============================================================
+
 def procesar_qr(imagen_bytes):
     """Procesa una imagen y extrae el código QR usando OpenCV"""
     try:
@@ -451,8 +455,6 @@ def procesar_qr(imagen_bytes):
         return None, "No se detectó ningún código QR"
     except Exception as e:
         return None, f"Error al leer: {e}"
-
-
     # ============================================================
 # 5.1 CLASE PARA CÁMARA EN TIEMPO REAL
 # ============================================================
