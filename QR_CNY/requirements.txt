@@ -1,5 +1,9 @@
 streamlit
 pandas
 qrcode
-openpyxl
-pyzbar
+pillow
+reportlab
+opencv-python-headless
+numpy
+streamlit-webrtc
+av
